@@ -26,6 +26,10 @@ data = datasets.load_dataset('GEM/viggo')
 tokenizer = GPT2Tokenizer.from_pretrained('gpt2', bos_token='<|startoftext|>', eos_token='<|endoftext|>', pad_token='<|pad|>') #gpt2-medium
 # tokenizer.add_special_tokens({'start_viggo' : "<start_task>"})
 
+# print("Meaning Representation: ", data['train'][0]['meaning_representation'])
+# print("Target: ", data['train'][0]['target'])
+# breakpoint()
+
 # breakpoint()
 # kept here for reference 
 # for i in range(0, len(data['train'])):
@@ -74,9 +78,17 @@ class GPT2Dataset(Dataset):
                     cur_sequence += '<meaning_end>'
                 
                 cur_sequence += '<|endoftext|wit>'
+
+                # print(cur_sequence)
+                # print("------------------")
                 
                 encodings_dict_2 = tokenizer(cur_sequence, truncation=True)
-                if len(encodings_dict_2['input_ids']) > max_length or len(encodings_dict_2['input_ids']) > max_length:
+                if len(encodings_dict_2['input_ids']) > max_length:
+                    # print("Finalized Tokens: ")
+                    # print("Length of Too Long Encoding: ", len(encodings_dict_2['input_ids']))
+                    # print("Final Length: ", len(encodings_dict['input_ids']))
+                    # print("Final Token IDs: ", encodings_dict['input_ids'])
+                    # print("------------------")
                     # breakpoint()
                     break
                 encodings_dict = tokenizer(cur_sequence, truncation=True, max_length=max_length, padding="max_length")
@@ -97,7 +109,7 @@ class GPT2Dataset(Dataset):
 
 
 dataset = GPT2Dataset(data['train'], tokenizer, max_length=768)
-# breakpoint()
+breakpoint()
 # Split into training and validation sets
 train_size = int(0.9 * len(dataset))
 val_size = len(dataset) - train_size
