@@ -49,14 +49,14 @@ class GPT2Dataset(Dataset):
         # breakpoint()
 
         # for i in range(0, len(txt_list)):
-        #     encodings_dict = tokenizer('<|startoftext|><query_begin>' + txt_list[i]['target'] + '<query_end><meaning_begin>' + txt_list[i]['meaning_representation'] + '<meaning_end><|endoftext|wit>', truncation=True, max_length=max_length, padding="max_length")
+        #     encodings_dict = tokenizer('<|startoftext|><query_begin>' + txt_list[i]['target'] + '<query_end><meaning_begin>' + txt_list[i]['meaning_representation'] + '<meaning_end><|endoftext|>', truncation=True, max_length=max_length, padding="max_length")
         #     breakpoint()
         #     self.input_ids.append(torch.tensor(encodings_dict['input_ids']))
         #     self.attn_masks.append(torch.tensor(encodings_dict['attention_mask']))
 
         i = 0
         while i < len(txt_list):            
-            encodings_dict = tokenizer('<|startoftext|><query_begin>' + txt_list[i]['target'] + '<query_end><meaning_begin>' + txt_list[i]['meaning_representation'] + '<meaning_end><|endoftext|wit>', truncation=True, max_length=max_length, padding="max_length")
+            encodings_dict = tokenizer('<|startoftext|><query_begin>' + txt_list[i]['target'] + '<query_end><query_meaning_separator><meaning_begin>' + txt_list[i]['meaning_representation'] + '<meaning_end><|endoftext|>', truncation=True, max_length=max_length, padding="max_length")
             
             j = i + 1
             while j < len(txt_list):
@@ -73,7 +73,7 @@ class GPT2Dataset(Dataset):
                     cur_sequence += txt_list[k]['meaning_representation']
                     cur_sequence += '<meaning_end>'
                 
-                cur_sequence += '<|endoftext|wit>'
+                cur_sequence += '<|endoftext|>'
                 
                 encodings_dict_2 = tokenizer(cur_sequence, truncation=True)
                 if len(encodings_dict_2['input_ids']) > max_length or len(encodings_dict_2['input_ids']) > max_length:
@@ -103,6 +103,7 @@ train_size = int(0.9 * len(dataset))
 val_size = len(dataset) - train_size
 
 train_dataset, val_dataset = random_split(dataset, [train_size, val_size])
+# breakpoint()
 
 print('{:>5,} training samples'.format(train_size))
 print('{:>5,} validation samples'.format(val_size))
@@ -145,7 +146,10 @@ torch.cuda.manual_seed_all(seed_val)
 
 # some parameters I cooked up that work reasonably well
 epochs = 5
+# epochs = 10
+
 learning_rate = 5e-4
+# learning_rate = 2e-3
 warmup_steps = 1e2
 epsilon = 1e-8
 
@@ -300,7 +304,8 @@ print("")
 print("Training complete!")
 print("Total training took {:} (h:mm:ss)".format(format_time(time.time()-total_t0)))
 
-output_dir = './model_weights/motivatingexp'
+output_dir = '/home/rajpalleti/simplesequencepacking'
+# output_dir = '/home/rajpalleti/simplesequencepacking_epochs=10_lr=2e-3'
 model_to_save = model.module if hasattr(model, 'module') else model  # Take care of distributed/parallel training
 model_to_save.save_pretrained(output_dir)
 tokenizer.save_pretrained(output_dir)
