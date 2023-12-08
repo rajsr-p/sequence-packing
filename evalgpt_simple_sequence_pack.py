@@ -23,7 +23,9 @@ data = datasets.load_dataset('GEM/viggo')
 # Load the pretrained model.
 
 # output_dir = '/home/rajpalleti/motivatingexp'
-output_dir = '/home/rajpalleti/simplesequencepacking'
+# output_dir = '/home/rajpalleti/simplesequencepacking'
+# output_dir = '/home/DanielKim/simplesequencepacking_ablation1'
+output_dir = '/home/DanielKim/simplesequencepacking_ablation1'
 
 model = GPT2LMHeadModel.from_pretrained(output_dir)
 
@@ -57,9 +59,11 @@ torch.cuda.manual_seed_all(seed_val)
 # for example in data[test]
 
 num_correct_predictions = 0
+path = "simple_sequence_packing_ablation2_output.txt"
+ 
 for i in range(len(data["test"])):
 
-  test_prompt = '<|startoftext|><query_begin>' + data["test"][i]['target'] + '<query_end><query_meaning_separator><meaning_begin>'
+  test_prompt = '<|startoftext|><query_begin1>' + data["test"][i]['target'] + '<query_end1><query_meaning_separator><meaning_begin1>'
   # test_prompt_tokenized = torch.tokenizer(test_prompt, truncation=True, max_length=max_length, padding="max_length"))
 
   test_prompt_tokenized = torch.tensor(tokenizer.encode(test_prompt)).unsqueeze(0)
@@ -102,11 +106,23 @@ for i in range(len(data["test"])):
   if start_index != -1:
     predicted_meaning = test_prediction_decoded[start_index + len(meaning_begin_tag):]
     predicted_meaning_original = test_prediction_decoded_original[start_index_original + len(meaning_begin_tag):]
-    if predicted_meaning == test_label:
-      num_correct_predictions += 1
-      # print("Correct")
+
+    with open(path, 'a') as file: 
+      file.write(predicted_meaning + '\n')
+      file.write(test_label + '\n')
+
+      if predicted_meaning == test_label:
+        num_correct_predictions += 1
+        file.write('\n')
+        # print("Correct")
+      else: 
+        file.write("ABOVE MARKED INCORRECT\n\n")
+  else: 
+    with open(path, 'a') as file: 
+      file.write("<meaning_begin> was not found in the decoded test prediction.\n")
+      file.write("ABOVE MARKED INCORRECT\n\n")
   
-  breakpoint()
+  # breakpoint()
 
   # print()
   # breakpoint()

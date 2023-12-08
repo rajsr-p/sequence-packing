@@ -41,7 +41,7 @@ tokenizer = GPT2Tokenizer.from_pretrained('gpt2', bos_token='<|startoftext|>', e
 #     print(elem['target'])
 #     breakpoint()
 
-batch_size = 2
+batch_size = 4
 
 class GPT2Dataset(Dataset):
 
@@ -60,28 +60,28 @@ class GPT2Dataset(Dataset):
 
         i = 0
         while i < len(txt_list):            
-            encodings_dict = tokenizer('<|startoftext|><query_begin>' + txt_list[i]['target'] + '<query_end><query_meaning_separator><meaning_begin>' + txt_list[i]['meaning_representation'] + '<meaning_end><|endoftext|>', truncation=True, max_length=max_length, padding="max_length")
+            encodings_dict = tokenizer('<|startoftext|><query_begin1>' + txt_list[i]['target'] + '<query_end1><query_meaning_separator><meaning_begin1>' + txt_list[i]['meaning_representation'] + '<meaning_end1><|endoftext|>', truncation=True, max_length=max_length, padding="max_length")
             
             j = i + 1
             while j < len(txt_list):
                 cur_sequence = '<|startoftext|>'
                 for k in range(i, j + 1):
-                    cur_sequence += '<query_begin>'
+                    cur_sequence += '<query_begin' + str(k-i+1) + '>'
                     cur_sequence += txt_list[k]['target']
-                    cur_sequence += '<query_end>'
+                    cur_sequence += '<query_end' + str(k-i+1) + '>'
                 
                 cur_sequence += '<query_meaning_separator>'
 
                 for k in range(i, j + 1):
-                    cur_sequence += '<meaning_begin>'
+                    cur_sequence += '<meaning_begin' + str(k-i+1) + '>'
                     cur_sequence += txt_list[k]['meaning_representation']
-                    cur_sequence += '<meaning_end>'
+                    cur_sequence += '<meaning_end' + str(k-i+1) + '>'
                 
                 cur_sequence += '<|endoftext|>'
                 
                 encodings_dict_2 = tokenizer(cur_sequence, truncation=True)
                 if len(encodings_dict_2['input_ids']) > max_length:
-                    # print("Finalized Tokens: ")
+                    # print("Too Long Sequence: ", cur_sequence)
                     # print("Length of Too Long Encoding: ", len(encodings_dict_2['input_ids']))
                     # print("Final Length: ", len(encodings_dict['input_ids']))
                     # print("Final Token IDs: ", encodings_dict['input_ids'])
@@ -106,7 +106,7 @@ class GPT2Dataset(Dataset):
 
 
 dataset = GPT2Dataset(data['train'], tokenizer, max_length=768)
-breakpoint()
+# breakpoint()
 # Split into training and validation sets
 train_size = int(0.9 * len(dataset))
 val_size = len(dataset) - train_size
@@ -313,7 +313,7 @@ print("")
 print("Training complete!")
 print("Total training took {:} (h:mm:ss)".format(format_time(time.time()-total_t0)))
 
-output_dir = '/home/rajpalleti/simplesequencepacking'
+output_dir = '/home/DanielKim/simplesequencepacking_ablation2'
 # output_dir = '/home/rajpalleti/simplesequencepacking_epochs=10_lr=2e-3'
 model_to_save = model.module if hasattr(model, 'module') else model  # Take care of distributed/parallel training
 model_to_save.save_pretrained(output_dir)
