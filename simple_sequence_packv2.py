@@ -21,16 +21,23 @@ from transformers import AdamW, get_linear_schedule_with_warmup
 
 import datasets
 data = datasets.load_dataset('GEM/viggo')
+output_dir = '/home/rehaan/sequence-packing/model_weights/uhohtest1'
 
-# breakpoint()
+os.mkdir(output_dir)
+file1 = open(output_dir + "/training.txt", "a")  # append mode
+file1.write(str("begin test") +  "\n")
+file1.close()
+
 tokenizer = GPT2Tokenizer.from_pretrained('gpt2', bos_token='<|startoftext|>', eos_token='<|endoftext|>', pad_token='<|pad|>') #gpt2-medium
-# tokenizer.add_special_tokens({'start_viggo' : "<start_task>"})
+
+tokenizer.add_special_tokens({
+    "additional_special_tokens": ["<query_begin>", "<query_end>", "<meaning_begin>", "<meaning_end>"]
+})
+
 
 # print("Meaning Representation: ", data['train'][0]['meaning_representation'])
 # print("Target: ", data['train'][0]['target'])
-# breakpoint()
 
-# breakpoint()
 # kept here for reference 
 # for i in range(0, len(data['train'])):
 #     print(data['train'][i])
@@ -50,32 +57,41 @@ class GPT2Dataset(Dataset):
         self.tokenizer = tokenizer
         self.input_ids = []
         self.attn_masks = []
-        # breakpoint()
 
         # for i in range(0, len(txt_list)):
         #     encodings_dict = tokenizer('<|startoftext|><query_begin>' + txt_list[i]['target'] + '<query_end><meaning_begin>' + txt_list[i]['meaning_representation'] + '<meaning_end><|endoftext|>', truncation=True, max_length=max_length, padding="max_length")
-        #     breakpoint()
         #     self.input_ids.append(torch.tensor(encodings_dict['input_ids']))
         #     self.attn_masks.append(torch.tensor(encodings_dict['attention_mask']))
 
+        whole_list = []
+
         i = 0
         while i < len(txt_list):            
-            encodings_dict = tokenizer('<|startoftext|><query_begin1>' + txt_list[i]['target'] + '<query_end1><query_meaning_separator><meaning_begin1>' + txt_list[i]['meaning_representation'] + '<meaning_end1><|endoftext|>', truncation=True, max_length=max_length, padding="max_length")
-            
+            encodings_dict = tokenizer('<|startoftext|><query_begin>' + txt_list[i]['target'] + '<query_end><meaning_begin>' + txt_list[i]['meaning_representation'] + '<meaning_end><|endoftext|>', truncation=True, max_length=max_length, padding="max_length")
+            encodings_dict['token_len_list'] = [len(tokenizer('<query_begin>' + txt_list[i]['target'] + '<query_end><meaning_begin>' + txt_list[i]['meaning_representation'] + '<meaning_end>')['input_ids'])]
+
+            whole_list.append(len(tokenizer('<query_begin>' + txt_list[i]['target'] + '<query_end><meaning_begin>' + txt_list[i]['meaning_representation'] + '<meaning_end>')['input_ids']))
+
             j = i + 1
             while j < len(txt_list):
+                # break
                 cur_sequence = '<|startoftext|>'
+                tok_len = 0
+                token_lens = []
                 for k in range(i, j + 1):
-                    cur_sequence += '<query_begin' + str(k-i+1) + '>'
-                    cur_sequence += txt_list[k]['target']
-                    cur_sequence += '<query_end' + str(k-i+1) + '>'
-                
-                cur_sequence += '<query_meaning_separator>'
+                    new_sequence = '<query_begin>'
+                    new_sequence += txt_list[k]['target']
+                    new_sequence += '<query_end>'
+          
+                    new_sequence += '<meaning_begin>'
+                    new_sequence += txt_list[k]['meaning_representation']
+                    new_sequence += '<meaning_end>'
+                    new_tok_len = len(tokenizer(new_sequence)['input_ids'])
+                    tok_len += new_tok_len
+                    
+                    token_lens.append(new_tok_len)
 
-                for k in range(i, j + 1):
-                    cur_sequence += '<meaning_begin' + str(k-i+1) + '>'
-                    cur_sequence += txt_list[k]['meaning_representation']
-                    cur_sequence += '<meaning_end' + str(k-i+1) + '>'
+                    cur_sequence += new_sequence
                 
                 cur_sequence += '<|endoftext|>'
                 
@@ -86,17 +102,36 @@ class GPT2Dataset(Dataset):
                     # print("Final Length: ", len(encodings_dict['input_ids']))
                     # print("Final Token IDs: ", encodings_dict['input_ids'])
                     # print("------------------")
-                    # breakpoint()
+
                     break
                 encodings_dict = tokenizer(cur_sequence, truncation=True, max_length=max_length, padding="max_length")
+                encodings_dict['token_len_list'] = token_lens
                 j += 1
             
+            # print(encodings_dict['token_len_list'])
+            existing_mask = torch.tensor(encodings_dict['attention_mask'])
+            seq_len = existing_mask.shape[0]
+            new_mask = torch.zeros([seq_len, seq_len])
+            
+            # print(encodings_dict['token_len_list'])
+
+            prev_mask_len = 1
+            for elem in encodings_dict['token_len_list']:
+                new_mask[prev_mask_len:prev_mask_len+elem, prev_mask_len:prev_mask_len+elem] = 1
+                prev_mask_len += elem
+
+            new_mask[0:prev_mask_len+1, 0] = 1
+            new_mask[0, 0:prev_mask_len+1] = 1
+            new_mask[prev_mask_len, 0:prev_mask_len+1] = 1
+            new_mask[0:prev_mask_len+1, prev_mask_len] = 1
+            sumlen = int(torch.sum(new_mask[0]))
+            # new_mask[:, :sumlen] = 1
             # breakpoint()
+
             self.input_ids.append(torch.tensor(encodings_dict['input_ids']))
-            self.attn_masks.append(torch.tensor(encodings_dict['attention_mask']))
+            self.attn_masks.append(new_mask)
 
-            i = j         
-
+            i = j     
         
     
     def __len__(self):
@@ -108,14 +143,11 @@ class GPT2Dataset(Dataset):
 
 dataset = GPT2Dataset(data['train'], tokenizer, max_length=768)
 
-breakpoint()
-# breakpoint()
 # Split into training and validation sets
 train_size = int(0.9 * len(dataset))
 val_size = len(dataset) - train_size
 
 train_dataset, val_dataset = random_split(dataset, [train_size, val_size])
-# breakpoint()
 
 print('{:>5,} training samples'.format(train_size))
 print('{:>5,} validation samples'.format(val_size))
@@ -210,17 +242,21 @@ for epoch_i in range(0, epochs):
 
         b_input_ids = batch[0].to(device)
         b_labels = batch[0].to(device)
-        b_masks = batch[1].to(device)[:, None, :]
+        b_masks = batch[1].to(device)
         seq_length = b_masks.shape[-1]
-        # breakpoint()
 
+        # print("pre-breakpoint 1")
+        # breakpoint()
         model.zero_grad()        
         outputs = model(  b_input_ids,
-                          labels=b_labels, 
-                          attention_mask = b_masks.repeat(1, seq_length, 1),
+                          labels=b_labels,
+                          output_attentions=True, 
+                          attention_mask = b_masks,
                           token_type_ids=None
                         )
 
+        # print("outputs done, check outputs.attentions")
+        # breakpoint()
         loss = outputs[0]  
 
         batch_loss = loss.item()
@@ -232,20 +268,20 @@ for epoch_i in range(0, epochs):
             elapsed = format_time(time.time() - t0)
             print('  Batch {:>5,}  of  {:>5,}. Loss: {:>5,}.   Elapsed: {:}.'.format(step, len(train_dataloader), batch_loss, elapsed))
 
-            model.eval()
+            # model.eval()
 
-            sample_outputs = model.generate(
-                                    bos_token_id=random.randint(1,30000),
-                                    do_sample=True,   
-                                    top_k=50, 
-                                    max_length = 200,
-                                    top_p=0.95, 
-                                    num_return_sequences=1
-                                )
-            for i, sample_output in enumerate(sample_outputs):
-                  print("{}: {}".format(i, tokenizer.decode(sample_output, skip_special_tokens=True)))
+            # sample_outputs = model.generate(
+            #                         bos_token_id=random.randint(1,30000),
+            #                         do_sample=True,   
+            #                         top_k=50, 
+            #                         max_length = 200,
+            #                         top_p=0.95, 
+            #                         num_return_sequences=1
+            #                     )
+            # for i, sample_output in enumerate(sample_outputs):
+            #       print("{}: {}".format(i, tokenizer.decode(sample_output, skip_special_tokens=True)))
             
-            model.train()
+            # model.train()
 
         loss.backward()
         optimizer.step()
@@ -285,7 +321,7 @@ for epoch_i in range(0, epochs):
 
             outputs  = model(b_input_ids, 
 #                            token_type_ids=None, 
-                             attention_mask = b_masks,
+                            attention_mask = b_masks,
                             labels=b_labels)
           
             loss = outputs[0]  
@@ -299,6 +335,14 @@ for epoch_i in range(0, epochs):
 
     print("  Validation Loss: {0:.2f}".format(avg_val_loss))
     print("  Validation took: {:}".format(validation_time))
+
+    file1 = open(output_dir + "/training.txt", "a")  # append mode
+    file1.write(str(avg_train_loss) +  "\n")
+    file1.close()
+
+    file1 = open(output_dir + "/validation.txt", "a")  # append mode
+    file1.write(str(avg_val_loss) + "\n")
+    file1.close()
 
     # Record all statistics from this epoch.
     training_stats.append(
@@ -315,10 +359,8 @@ print("")
 print("Training complete!")
 print("Total training took {:} (h:mm:ss)".format(format_time(time.time()-total_t0)))
 
-output_dir = '/home/DanielKim/simplesequencepacking_ablation2'
+# output_dir = '/home/DanielKim/simplesequencepacking_ablation2'
 # output_dir = '/home/rajpalleti/simplesequencepacking_epochs=10_lr=2e-3'
 model_to_save = model.module if hasattr(model, 'module') else model  # Take care of distributed/parallel training
 model_to_save.save_pretrained(output_dir)
 tokenizer.save_pretrained(output_dir)
-
-
