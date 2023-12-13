@@ -25,7 +25,7 @@ data = datasets.load_dataset('GEM/viggo')
 # output_dir = '/home/rajpalleti/motivatingexp'
 # output_dir = '/home/rajpalleti/simplesequencepacking'
 # output_dir = '/home/DanielKim/simplesequencepacking_ablation1'
-output_dir = '/home/rehaan/sequence-packing/model_weights/uhohtest1'
+output_dir = '/home/rehaan/sequence-packing/model_weights/uhohtest15'
 
 model = GPT2LMHeadModel.from_pretrained(output_dir)
 
@@ -59,7 +59,7 @@ torch.cuda.manual_seed_all(seed_val)
 # for example in data[test]
 
 num_correct_predictions = 0
-path = "simple_sequence_packing_ablation2_output.txt"
+path = "output15.txt"
  
 for i in range(len(data["test"])):
 
@@ -76,7 +76,7 @@ for i in range(len(data["test"])):
 
   test_prediction = model.generate(
                                 test_prompt_tokenized.cuda(), 
-                                #bos_token_id=random.randint(1,30000),
+                                bos_token_id=50257,
                                 do_sample=False,   
                                 top_k=50, 
                                 max_length = 300,
@@ -98,6 +98,7 @@ for i in range(len(data["test"])):
     predicted_meaning = test_prediction_decoded[start_index + len(meaning_begin_tag):]
 
     with open(path, 'a') as file: 
+      file.write("---\n")
       file.write(predicted_meaning + '\n')
       file.write(test_label + '\n')
 
@@ -105,12 +106,12 @@ for i in range(len(data["test"])):
         num_correct_predictions += 1
         file.write('\n')
         # print("Correct")
-      else: 
-        file.write("ABOVE MARKED INCORRECT\n\n")
-  else: 
-    with open(path, 'a') as file: 
-      file.write("<meaning_begin> was not found in the decoded test prediction.\n")
-      file.write("ABOVE MARKED INCORRECT\n\n")
+  #     else: 
+  #       file.write("ABOVE MARKED INCORRECT\n\n")
+  # else: 
+  #   with open(path, 'a') as file: 
+  #     file.write("<meaning_begin> was not found in the decoded test prediction.\n")
+  #     file.write("ABOVE MARKED INCORRECT\n\n")
   
   # breakpoint()
 

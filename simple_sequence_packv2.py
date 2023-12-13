@@ -21,7 +21,7 @@ from transformers import AdamW, get_linear_schedule_with_warmup
 
 import datasets
 data = datasets.load_dataset('GEM/viggo')
-output_dir = '/home/rehaan/sequence-packing/model_weights/uhohtest1'
+output_dir = '/home/rehaan/sequence-packing/model_weights/uhohtest9'
 
 os.mkdir(output_dir)
 file1 = open(output_dir + "/training.txt", "a")  # append mode
@@ -33,7 +33,6 @@ tokenizer = GPT2Tokenizer.from_pretrained('gpt2', bos_token='<|startoftext|>', e
 tokenizer.add_special_tokens({
     "additional_special_tokens": ["<query_begin>", "<query_end>", "<meaning_begin>", "<meaning_end>"]
 })
-
 
 # print("Meaning Representation: ", data['train'][0]['meaning_representation'])
 # print("Target: ", data['train'][0]['target'])
@@ -48,7 +47,9 @@ tokenizer.add_special_tokens({
 #     print(elem['target'])
 #     breakpoint()
 
+SEQUENCE_PACK = True
 batch_size = 4
+SEQ_LENGTH = 768 # 160 or 768
 
 class GPT2Dataset(Dataset):
 
@@ -68,24 +69,25 @@ class GPT2Dataset(Dataset):
         i = 0
         while i < len(txt_list):            
             encodings_dict = tokenizer('<|startoftext|><query_begin>' + txt_list[i]['target'] + '<query_end><meaning_begin>' + txt_list[i]['meaning_representation'] + '<meaning_end><|endoftext|>', truncation=True, max_length=max_length, padding="max_length")
-            encodings_dict['token_len_list'] = [len(tokenizer('<query_begin>' + txt_list[i]['target'] + '<query_end><meaning_begin>' + txt_list[i]['meaning_representation'] + '<meaning_end>')['input_ids'])]
+            encodings_dict['token_len_list'] = [len(tokenizer('<|startoftext|><query_begin>' + txt_list[i]['target'] + '<query_end><meaning_begin>' + txt_list[i]['meaning_representation'] + '<meaning_end><|endoftext|>')['input_ids'])]
 
             whole_list.append(len(tokenizer('<query_begin>' + txt_list[i]['target'] + '<query_end><meaning_begin>' + txt_list[i]['meaning_representation'] + '<meaning_end>')['input_ids']))
 
             j = i + 1
             while j < len(txt_list):
-                # break
-                cur_sequence = '<|startoftext|>'
+                if SEQUENCE_PACK == False:
+                    break
+                cur_sequence = ''
                 tok_len = 0
                 token_lens = []
                 for k in range(i, j + 1):
-                    new_sequence = '<query_begin>'
+                    new_sequence = '<|startoftext|><query_begin>'
                     new_sequence += txt_list[k]['target']
                     new_sequence += '<query_end>'
           
                     new_sequence += '<meaning_begin>'
                     new_sequence += txt_list[k]['meaning_representation']
-                    new_sequence += '<meaning_end>'
+                    new_sequence += '<meaning_end><|endoftext|>'
                     new_tok_len = len(tokenizer(new_sequence)['input_ids'])
                     tok_len += new_tok_len
                     
@@ -93,7 +95,7 @@ class GPT2Dataset(Dataset):
 
                     cur_sequence += new_sequence
                 
-                cur_sequence += '<|endoftext|>'
+                # cur_sequence += '<|endoftext|>'
                 
                 encodings_dict_2 = tokenizer(cur_sequence, truncation=True)
                 if len(encodings_dict_2['input_ids']) > max_length:
@@ -106,6 +108,7 @@ class GPT2Dataset(Dataset):
                     break
                 encodings_dict = tokenizer(cur_sequence, truncation=True, max_length=max_length, padding="max_length")
                 encodings_dict['token_len_list'] = token_lens
+                # breakpoint()
                 j += 1
             
             # print(encodings_dict['token_len_list'])
@@ -115,15 +118,15 @@ class GPT2Dataset(Dataset):
             
             # print(encodings_dict['token_len_list'])
 
-            prev_mask_len = 1
+            prev_mask_len = 0
             for elem in encodings_dict['token_len_list']:
                 new_mask[prev_mask_len:prev_mask_len+elem, prev_mask_len:prev_mask_len+elem] = 1
                 prev_mask_len += elem
 
-            new_mask[0:prev_mask_len+1, 0] = 1
-            new_mask[0, 0:prev_mask_len+1] = 1
-            new_mask[prev_mask_len, 0:prev_mask_len+1] = 1
-            new_mask[0:prev_mask_len+1, prev_mask_len] = 1
+            # new_mask[0:prev_mask_len+1, 0] = 1
+            # new_mask[0, 0:prev_mask_len+1] = 1
+            # new_mask[prev_mask_len, 0:prev_mask_len+1] = 1
+            # new_mask[0:prev_mask_len+1, prev_mask_len] = 1
             sumlen = int(torch.sum(new_mask[0]))
             # new_mask[:, :sumlen] = 1
             # breakpoint()
@@ -133,6 +136,8 @@ class GPT2Dataset(Dataset):
 
             i = j     
         
+        # breakpoint()
+        
     
     def __len__(self):
         return len(self.input_ids)
@@ -141,7 +146,7 @@ class GPT2Dataset(Dataset):
         return self.input_ids[idx], self.attn_masks[idx] 
 
 
-dataset = GPT2Dataset(data['train'], tokenizer, max_length=768)
+dataset = GPT2Dataset(data['train'], tokenizer, max_length=SEQ_LENGTH) # 160 or 768
 
 # Split into training and validation sets
 train_size = int(0.9 * len(dataset))
@@ -189,12 +194,12 @@ torch.manual_seed(seed_val)
 torch.cuda.manual_seed_all(seed_val)
 
 # some parameters I cooked up that work reasonably well
+# epochs = 5
 epochs = 5
-# epochs = 10
 
-learning_rate = 5e-4
+learning_rate = 2e-3
 # learning_rate = 2e-3
-warmup_steps = 1e2
+warmup_steps = 10 #if SEQUENCE_PACK else 100
 epsilon = 1e-8
 
 # this produces sample output every 100 steps
@@ -223,6 +228,8 @@ total_t0 = time.time()
 training_stats = []
 model = model.to(device)
 
+import time
+
 for epoch_i in range(0, epochs):
     # ========================================
     #               Training
@@ -236,6 +243,9 @@ for epoch_i in range(0, epochs):
     total_train_loss = 0
     model.train()
 
+    padded_spots = 0
+    start = time.time()
+
     for step, batch in enumerate(train_dataloader):
         if step % 10 == 0:
             print("step: " + str(step))
@@ -245,8 +255,11 @@ for epoch_i in range(0, epochs):
         b_masks = batch[1].to(device)
         seq_length = b_masks.shape[-1]
 
+        new_mask = (b_masks.sum(dim=1) > 0)
+        padded_spots += sum(SEQ_LENGTH - torch.sum(new_mask, dim=1))
         # print("pre-breakpoint 1")
         # breakpoint()
+        
         model.zero_grad()        
         outputs = model(  b_input_ids,
                           labels=b_labels,
@@ -287,6 +300,8 @@ for epoch_i in range(0, epochs):
         optimizer.step()
         scheduler.step()
 
+    end = time.time()
+    print("end - start: " + str(end-start))
     # Calculate the average loss over all of the batches.
     avg_train_loss = total_train_loss / len(train_dataloader)       
     
@@ -296,7 +311,7 @@ for epoch_i in range(0, epochs):
     print("")
     print("  Average training loss: {0:.2f}".format(avg_train_loss))
     print("  Training epoch took: {:}".format(training_time))
-        
+    print(" padded spots: " + str(padded_spots))   
     # ========================================
     #               Validation
     # ========================================
@@ -344,6 +359,10 @@ for epoch_i in range(0, epochs):
     file1.write(str(avg_val_loss) + "\n")
     file1.close()
 
+    file1 = open(output_dir + "/padded_spots.txt", "a")  # append mode
+    file1.write(str(padded_spots) + "\n")
+    file1.close()
+
     # Record all statistics from this epoch.
     training_stats.append(
         {
@@ -354,6 +373,7 @@ for epoch_i in range(0, epochs):
             'Validation Time': validation_time
         }
     )
+
 
 print("")
 print("Training complete!")
